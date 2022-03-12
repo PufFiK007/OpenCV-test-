@@ -1,0 +1,104 @@
+#include “cv.h”
+#include “highgui.h”
+#include <stdio.h>
+#include <ctype.h>
+void FindBall(IplImage* Img);
+void Counter(IplImage* img);
+CvPoint2D32f center;
+float radius;
+long pointer=0;
+int main( int argc, char** argv )
+{
+CvCapture* capture = 0;
+capture = cvCaptureFromAVI( “capture-1.avi” );
+cvNamedWindow( “Demo”, 1 );
+for(;;)
+{
+IplImage* frame = 0;
+int i, k, c;
+frame = cvQueryFrame( capture );
+if( !frame )
+break;
+FindBall(frame);
+cvShowImage( “Demo”, frame );
+c = cvWaitKey(50);
+if( (char)c == 27 )
+break;
+pointer++;
+}
+cvWaitKey(0);
+// освобождаем ресурсы
+cvReleaseCapture( &capture );
+cvDestroyWindow(”Demo”);
+return 0;
+}
+void FindBall(IplImage* Img)
+{
+// Создаём 8-битную, 3-канальную картинку
+IplImage* Image=cvCreateImage( cvGetSize(Img), 8, 3 );
+cvCopy(Img,Image);
+//Теперь необходимо получить доступ к всем пикселям.
+uchar* ptr1;
+ptr1 = (uchar*) (Image->imageData );
+int i,j;
+for(i=0;i<Img->height;i++)
+for(j=0;j<Img->width;j++)
+{
+//наше условие для поиска оранжевых пикселей R > 1.5*G, R > 2*B
+if (ptr1[j*3+2+i*Image->widthStep]>1.5*ptr1[j*3+1+i*Image->widthStep] &&
+ptr1[j*3+2+i*Image->widthStep]>2*ptr1[j*3+i*Image->widthStep])
+{
+ptr1[j*3+i*Image->widthStep]=255;
+ptr1[j*3+1+i*Image->widthStep]=255;
+ptr1[j*3+2+i*Image->widthStep]=255;
+}
+else
+{
+ptr1[j*3+i*Image->widthStep]=0;
+ptr1[j*3+1+i*Image->widthStep]=0;
+ptr1[j*3+2+i*Image->widthStep]=0;
+}
+}
+//Выделение контуров и поиск наибольшего контура
+Counter(Image);
+if (center.x>-1)
+{
+CvPoint p;
+p.x=center.x;
+p.y=center.y;
+cvCircle( Img, p, radius, CV_RGB(255,0,0), 3, 8, 0 );
+}
+cvReleaseImage( &Image );
+}
+void Counter(IplImage* img)
+{
+IplImage* img_gray= cvCreateImage( cvSize(img->width,img->height), 8, 1);
+CvSeq* contours = 0;
+CvMemStorage* storage = cvCreateMemStorage(0);
+cvCvtColor( img, img_gray, CV_BGR2GRAY );
+cvFindContours( img_gray, storage, &contours, sizeof(CvContour),
+CV_RETR_LIST , CV_CHAIN_APPROX_SIMPLE, cvPoint(0,0) );
+CvSeq* h_next=0;
+//Поиск максимального контура
+for( CvSeq* c=contours; c!=NULL; c=c->h_next )
+{
+if (c!=contours)
+{
+//Проверяем какой контур больше
+if (h_next->total>=c->total)
+{
+h_next->h_next=h_next->h_next->h_next;
+continue;
+}
+}
+h_next=c;
+}
+center.x=-1;
+if (h_next->total<200) return;//нет мяча – слишком маленькие контуры
+cvDrawContours( img, h_next, CV_RGB(255,0,0), CV_RGB(0,255,0),2, 2, CV_AA, cvPoint(0,0) );
+//Минимальная окружность
+cvMinEnclosingCircle(h_next,&center,&radius);
+// освобождаем ресурсы
+cvReleaseMemStorage( &storage);
+cvReleaseImage( &img_gray );}
+
